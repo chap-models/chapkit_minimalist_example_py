@@ -1,0 +1,229 @@
+# chapkit_minimalist_example_py
+
+The canonical minimal Python example for [chapkit](https://dhis2-chap.github.io/chapkit).
+Fits a scikit-learn `LinearRegression` on `rainfall` + `mean_temperature` and
+forecasts `disease_cases` from future climate data, wrapped as a chapkit ML
+service on top of the public
+[`chapkit-py`](https://github.com/dhis2-chap/chapkit-images) base image.
+
+Use this repo as a starting point for your own Python-on-chapkit model: copy
+and replace the `LinearRegression` in `scripts/train_model.py` /
+`scripts/predict_model.py` with your real model, update the `MLServiceInfo`
+block in `main.py`, and you're done.
+
+This is the chapkit port of the original
+[`dhis2-chap/minimalist_example_uv`](https://github.com/dhis2-chap/minimalist_example_uv)
+MLproject example.
+
+Scaffolded with `uvx --from chapkit chapkit init <name> --template shell-py`.
+
+## What you'll edit
+
+You typically only edit three places:
+
+1. `scripts/train_model.py` - your Python training logic
+2. `scripts/predict_model.py` - your Python prediction logic
+3. The `Config` class and `MLServiceInfo` block in `main.py` - the parameters your
+   model accepts and the metadata that describes it
+
+Everything else (`Dockerfile`, `compose.yml`, the rest of `main.py`, the database
+plumbing) is wiring you can leave alone.
+
+## What you need installed
+
+- **Python 3.13 + uv**. Install uv from [astral.sh/uv](https://docs.astral.sh/uv/).
+- **Docker** with the compose plugin (for the production-ish path).
+
+## Quick Start
+
+### Development Mode
+
+Install dependencies and run the service locally:
+
+```bash
+uv sync
+uv run python main.py
+```
+
+The API will be available at http://localhost:9090
+
+### Docker
+
+Build and run with Docker Compose:
+
+```bash
+uv sync                  # one-time, generates uv.lock that the Dockerfile pins against
+docker compose up --build
+```
+
+The API will be available at:
+- API: http://localhost:9090
+- API Docs: http://localhost:9090/docs
+
+The compose stack maps host port 9090 to container port 8000. Edit `compose.yml`
+to change the host port. Local dev (`python main.py`) also defaults to 9090.
+
+### Verify the service
+
+Once the service is running (locally or in Docker), exercise the full
+config -> train -> predict flow with `chapkit test`:
+
+```bash
+# Against the running service (default http://localhost:9090)
+uv run chapkit test
+
+# More aggressive: 3 configs, 2 trainings each, 2 predictions per model
+uv run chapkit test -c 3 -t 2 -p 2 --verbose
+
+# Auto-start an in-memory service for the duration of the test
+uv run chapkit test --start-service
+```
+
+Note: this is an end-to-end **smoke test** of the API surface, not a model
+quality test. `chapkit test` synthesises random training and prediction
+data, drives the service through the full config -> train -> predict
+lifecycle, and confirms each step returns a valid response. It does not
+validate that your model produces meaningful predictions - only that the
+service plumbing (config CRUD, the train job, artifact persistence, and
+predict) all work. Handy after editing `main.py` or rebuilding the image.
+
+## API Endpoints
+
+The interactive Swagger UI at <http://localhost:9090/docs> is the easiest way to
+poke at the service - it lets you fill in payloads and hit endpoints from the
+browser without any extra tools.
+
+If you prefer Postman or Insomnia, point them at the OpenAPI spec at
+<http://localhost:9090/openapi.json> (Postman: *Import → Link* and paste the URL;
+it generates a fresh collection). Re-import after API changes.
+
+### Health Check
+
+```bash
+curl http://localhost:9090/health
+```
+
+### Configuration Management
+
+Create a configuration:
+
+```bash
+curl -X POST http://localhost:9090/api/v1/configs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-config",
+    "data": {}
+  }'
+```
+
+### ML Operations
+
+Train a model:
+
+```bash
+curl -X POST http://localhost:9090/api/v1/ml/\$train \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config_id": "YOUR_CONFIG_ID",
+    "data": {
+      "feature_1": [1, 2, 3],
+      "feature_2": [4, 5, 6],
+      "target": [7, 8, 9]
+    }
+  }'
+```
+
+Make predictions:
+
+```bash
+curl -X POST http://localhost:9090/api/v1/ml/\$predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model_id": "YOUR_MODEL_ID",
+    "future": {
+      "feature_1": [1, 2],
+      "feature_2": [3, 4]
+    }
+  }'
+```
+
+## Customization
+
+### Service identity (`MLServiceInfo`)
+
+Open `main.py` and fill in the `MLServiceInfo` block - chap-core surfaces these
+fields in its UI when listing models:
+
+- `id`, `display_name`, `version`, `description` - human-readable identity.
+- `model_metadata.author`, `contact_email`, `organization` - who owns it.
+- `model_metadata.author_assessed_status` - your honest read of how validated
+  the model is. Pick conservatively; chap-core shows this colour next to your
+  model in the catalogue.
+
+| Status | Meaning |
+| --- | --- |
+| `green` | Validated and ready for production use |
+| `yellow` | Ready for more rigorous testing on diverse data |
+| `orange` | Shows promise on limited data, needs manual configuration and careful evaluation |
+| `red` | Highly experimental prototype, not validated, only for early experimentation |
+| `gray` | Not intended for use - deprecated or kept only for backwards compatibility |
+
+This repo ships `AssessedStatus.red` because it's a teaching example, not a
+real forecaster. When you fork it for a real model, bump it up to match
+reality.
+
+### Update Model Configuration
+
+Edit the configuration class in `main.py`. The default `Config` only declares
+`prediction_periods`; add whatever your scripts read from `config.yml`:
+
+```python
+class ChapkitMinimalistExamplePyConfig(BaseConfig):
+    prediction_periods: int = 3
+    # Your model's hyperparameters, exposed via the config endpoint
+    min_samples: int = 5
+    learning_rate: float = 0.01
+```
+
+### Customize Training (Shell Runner, Python)
+
+Edit `scripts/train_model.py` to implement your model training logic. The
+example fits a scikit-learn `LinearRegression` on `rainfall` and
+`mean_temperature` — replace the `model.fit(...)` call with your real model.
+The script receives `--data <path-to-training-csv>` (and optionally
+`--geo <path-to-geojson>`), reads `config.yml` from the workspace if you
+need hyperparameters, and writes the model artefact to `model.pickle`.
+
+### Customize Prediction (Shell Runner, Python)
+
+Edit `scripts/predict_model.py`. The example calls `model.predict()` on the
+saved estimator using `rainfall` and `mean_temperature` from the future CSV
+— replace that with your model's inference path. The script receives
+`--historic`, `--future`, `--output` (and optional `--geo`); it loads the
+model written by training and writes predictions (with at least a `sample_0`
+column) to the `--output` CSV.
+
+## Project Structure
+
+```
+chapkit_minimalist_example_py/
+├── main.py              # Main application file
+├── scripts/             # External training/prediction scripts (Python)
+│   ├── train_model.py   # Training script
+│   └── predict_model.py # Prediction script
+├── pyproject.toml       # Python dependencies
+├── Dockerfile           # Docker build configuration
+├── compose.yml          # Docker Compose configuration
+└── data/                # Database directory
+    └── chapkit.db       # SQLite database (persisted)
+```
+
+## Documentation
+
+- [Chapkit Documentation](https://dhis2-chap.github.io/chapkit)
+- [FastAPI Documentation](https://fastapi.tiangolo.com)
+- [Servicekit Documentation](https://winterop-com.github.io/servicekit)
+
+## License
+
+[GPL-3.0](LICENSE), matching sister chap-models repos.
