@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Minimalist Python example: scikit-learn LinearRegression on rainfall + mean_temperature, wrapped as a chapkit service."
 requires-python = ">=3.13"
 dependencies = [
-    "chapkit>=0.27.0",
+    "chapkit>=1.0.0",
     "pandas>=2.3.3",
     "scikit-learn>=1.6.1",
     "joblib>=1.4.2",
