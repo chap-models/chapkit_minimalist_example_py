@@ -8,6 +8,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Bakes the commit into the image: GIT_REVISION=$(git rev-parse HEAD) docker compose up --build
+      args:
+        GIT_REVISION: ${GIT_REVISION:-}
     # Alternative: pull a prebuilt image from GHCR (comment out `build:` above).
     # image: ghcr.io/<your-org>/chapkit_minimalist_example_py:latest
     # pull_policy: always
