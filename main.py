@@ -72,7 +72,7 @@ runner: ShellModelRunner[ChapkitMinimalistExamplePyConfig] = ShellModelRunner(
 info = MLServiceInfo(
     id="chapkit-minimalist-example-py",
     display_name="chapkit_minimalist_example_py",
-    version="1.0.0",
+    version="1.0.1",
     description=(
         "Minimalist Python example: a scikit-learn LinearRegression on rainfall + "
         "mean_temperature, wrapped as a chapkit service. Intended as a starting point "
